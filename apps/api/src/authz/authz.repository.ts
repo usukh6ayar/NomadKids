@@ -223,6 +223,25 @@ export class AuthzRepository {
     return [...new Set(rows.map((r) => r.groupId))];
   }
 
+  /** Whether the actor is currently this group's lead teacher — not its assistant. */
+  async isActiveLeadTeacherOf(actor: Actor, groupId: string): Promise<boolean> {
+    const membershipIds = teacherMembershipIds(actor);
+    if (membershipIds.length === 0) return false;
+
+    const row = await this.prisma.groupTeacher.findFirst({
+      where: {
+        groupId,
+        membershipId: { in: membershipIds },
+        role: "LEAD",
+        endedOn: null,
+        deletedAt: null,
+        group: { deletedAt: null },
+      },
+      select: { id: true },
+    });
+    return row !== null;
+  }
+
   /**
    * Groups the actor is currently assigned to as a PE or music teacher.
    * Empty — and no query — for everyone else, so the hot path is unchanged

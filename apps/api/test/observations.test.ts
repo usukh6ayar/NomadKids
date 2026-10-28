@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createTestApp } from "./support/app";
 import { resetData, testDb, uniq } from "./support/db";
 import {
+  assignTeacher,
   authed,
   createChild,
   createGroup,
@@ -861,6 +862,104 @@ describe("group observation stats", () => {
       request(server()).get(
         `/v1/groups/${a.group.id}/observation-stats?from=2020-01-01&to=2026-12-31`,
       ),
+      teacherA,
+    );
+
+    expect(res.status).toBe(400);
+  });
+});
+
+/**
+ * «Сарын тэмдэглэл» — `GET /groups/:id/observations`, a month of the group's
+ * notes in full, for the lead teacher to read and print.
+ *
+ * ★ Narrower than the stats beside it: this returns the notes' text, so the
+ * assistant and the director are refused along with everyone §4.1 names.
+ */
+describe("group month of notes", () => {
+  const FEBRUARY = "from=2026-02-01&to=2026-02-28";
+
+  it("the lead teacher reads the month's teacher notes, named by child", async () => {
+    const id = await teacherObservation();
+    const linked = await authed(
+      request(server()).put(`/v1/observations/${id}/a79-links`),
+      teacherA,
+    ).send({ links: [{ level: "II", number: 2, status: "SUPPORTED" }] });
+    expect(linked.status).toBe(200);
+    await teacherObservation({ observedOn: "2026-03-11" });
+    await parentObservation();
+
+    const res = await authed(
+      request(server()).get(`/v1/groups/${a.group.id}/observations?${FEBRUARY}`),
+      teacherA,
+    );
+
+    expect(res.status).toBe(200);
+    // March is outside the window; the family's note is not the teacher's.
+    expect(res.body.total).toBe(1);
+    expect(res.body.items[0].child.id).toBe(a.child.id);
+    expect(res.body.items[0].childDid).toBe("Цамхаг барив");
+    // The note's А/79 criterion travels with it; no photo was attached.
+    expect(res.body.items[0].a79Links).toEqual([{ level: "II", number: 2, status: "SUPPORTED" }]);
+    expect(res.body.items[0].photo).toBeNull();
+  });
+
+  it("the group's assistant teacher gets 404", async () => {
+    const assistantUser = await createUser();
+    const membership = await createMembership(assistantUser.id, a.kindergarten.id, "TEACHER");
+    const assignment = await assignTeacher(a.kindergarten.id, a.group.id, membership.id);
+    await db.groupTeacher.update({ where: { id: assignment.id }, data: { role: "ASSISTANT" } });
+    const assistant = await login(app, assistantUser.username!);
+
+    const res = await authed(
+      request(server()).get(`/v1/groups/${a.group.id}/observations?${FEBRUARY}`),
+      assistant,
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  it("a teacher not assigned to the group gets 404", async () => {
+    const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Хараагүй бүлэг");
+
+    const res = await authed(
+      request(server()).get(`/v1/groups/${other.id}/observations?${FEBRUARY}`),
+      teacherA,
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  it("a teacher from another kindergarten gets 404", async () => {
+    const res = await authed(
+      request(server()).get(`/v1/groups/${b.group.id}/observations?${FEBRUARY}`),
+      teacherA,
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  it("the director gets 404", async () => {
+    const res = await authed(
+      request(server()).get(`/v1/groups/${a.group.id}/observations?${FEBRUARY}`),
+      adminA,
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  it("a guardian gets 404", async () => {
+    const res = await authed(
+      request(server()).get(`/v1/groups/${a.group.id}/observations?${FEBRUARY}`),
+      parentA,
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  it("refuses a window longer than a month", async () => {
+    const res = await authed(
+      request(server()).get(`/v1/groups/${a.group.id}/observations?from=2026-01-01&to=2026-03-31`),
       teacherA,
     );
 

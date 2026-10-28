@@ -207,6 +207,10 @@ export const qk = {
   groupObservationStats: (groupId: string, from: string, to: string) =>
     ["group", groupId, "observation-stats", from, to] as const,
 
+  /** «Сарын тэмдэглэл» — the lead teacher's month of the group's notes. */
+  groupMonthNotes: (groupId: string, month: string) =>
+    ["group", groupId, "month-notes", month] as const,
+
   assessmentConfig: (kindergartenId: string) =>
     ["kindergarten", kindergartenId, "assessment-config"] as const,
   terms: (kindergartenId: string, schoolYearId?: string) =>

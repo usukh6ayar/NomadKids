@@ -344,6 +344,82 @@ export class ObservationsRepository {
    * from another tenant returns null here and becomes a 404 in the service,
    * which is one place the tenant filter can be forgotten instead of two.
    */
+  /**
+   * A group's teacher notes over a window, in full — «Сарын тэмдэглэл».
+   *
+   * ★ Keyed on the enrolment the note was written under, not the child's
+   * current group: a child who moved on in the middle of the month still has
+   * this group's notes from the first half of it.
+   *
+   * Staff notes only (`source: TEACHER`); a family's submission belongs to the
+   * review queue, not to the teacher's record of the month.
+   */
+  async listGroupTeacherObservations(
+    groupId: string,
+    kindergartenId: string,
+    from: Date,
+    to: Date,
+    page: PageParams,
+  ) {
+    const { skip, take } = toSkipTake(page);
+    const where = {
+      kindergartenId,
+      deletedAt: null,
+      source: "TEACHER" as ObservationSource,
+      enrollment: { groupId },
+      observedOn: { gte: from, lte: to },
+    };
+
+    const [items, total] = await Promise.all([
+      this.prisma.observation.findMany({
+        where,
+        orderBy: [
+          { child: { firstName: "asc" } },
+          { child: { lastName: "asc" } },
+          { childId: "asc" },
+          { observedOn: "asc" },
+          { observedTime: "asc" },
+          { id: "asc" },
+        ],
+        skip,
+        take,
+        select: {
+          id: true,
+          childId: true,
+          observedOn: true,
+          observedTime: true,
+          activityName: true,
+          situation: true,
+          childDid: true,
+          childSaid: true,
+          teacherComment: true,
+          nextSteps: true,
+          child: { select: { id: true, lastName: true, firstName: true } },
+          type: { select: { id: true, name: true, code: true } },
+          indicator: { select: { id: true, code: true, domainId: true } },
+          indicatorLevel: true,
+          author: { select: { id: true, lastName: true, firstName: true } },
+          domains: { select: { domain: { select: { id: true, name: true } } } },
+          // One photo, the first — the client, 2026-10-28: the print shows one.
+          media: {
+            where: { deletedAt: null, status: "READY" },
+            select: { id: true, caption: true },
+            orderBy: { order: "asc" },
+            take: 1,
+          },
+          a79Links: {
+            where: { deletedAt: null },
+            select: { level: true, number: true, status: true },
+            orderBy: [{ level: "asc" }, { number: "asc" }],
+          },
+        },
+      }),
+      this.prisma.observation.count({ where }),
+    ]);
+
+    return { items, total };
+  }
+
   async findGroupForStats(groupId: string, kindergartenIds: string[]) {
     return this.prisma.group.findFirst({
       where: { id: groupId, deletedAt: null, kindergartenId: { in: kindergartenIds } },

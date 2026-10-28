@@ -12,12 +12,14 @@ import {
   listObservationsQuerySchema,
   reviewObservationSchema,
   groupStatsQuerySchema,
+  groupObservationsQuerySchema,
   updateObservationSchema,
   type CreateObservationDto,
   type CreateParentObservationDto,
   type ListObservationsQuery,
   type ReviewObservationDto,
   type GroupStatsQuery,
+  type GroupObservationsQuery,
   type UpdateObservationDto,
 } from "./observations.dto";
 
@@ -165,5 +167,27 @@ export class GroupObservationStatsController {
     @Query(new ZodValidationPipe(groupStatsQuerySchema)) query: GroupStatsQuery,
   ) {
     return this.service.groupStats(actor, params.id, query.from, query.to);
+  }
+}
+
+/**
+ * «Сарын тэмдэглэл» — a month of a group's teacher notes, in full.
+ *
+ * Its own controller for the reason `GroupObservationStatsController` gives:
+ * the resource is a group, authorised per group. Unlike the stats this returns
+ * the notes' text, so it is narrower — the group's lead teacher only.
+ */
+@Controller("groups/:id/observations")
+export class GroupObservationsController {
+  constructor(private readonly service: ObservationsService) {}
+
+  @Get()
+  @Roles("TEACHER")
+  async list(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(groupObservationsQuerySchema)) query: GroupObservationsQuery,
+  ) {
+    return this.service.listGroupObservations(actor, params.id, query);
   }
 }

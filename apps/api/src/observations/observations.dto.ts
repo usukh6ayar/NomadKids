@@ -216,3 +216,26 @@ export const groupStatsQuerySchema = z
     path: ["to"],
   });
 export type GroupStatsQuery = z.infer<typeof groupStatsQuerySchema>;
+
+/**
+ * «Сарын тэмдэглэл» — one month of a group's notes, a page at a time.
+ *
+ * ★ At most 31 days. The screen asks for a calendar month, and a wider window
+ * is a bulk export of the group's notes by another name.
+ */
+export const groupObservationsQuerySchema = paginationQuerySchema
+  .extend({
+    from: z.coerce.date(),
+    to: z.coerce.date(),
+  })
+  .strict()
+  .refine((q) => q.to >= q.from, {
+    message: "Дуусах огноо эхлэх огнооноос хойш байна",
+    path: ["to"],
+  })
+  .refine((q) => q.to.getTime() - q.from.getTime() <= 30 * 24 * 60 * 60 * 1000, {
+    message: "Хугацааны хязгаар 31 хоног",
+    path: ["to"],
+  });
+
+export type GroupObservationsQuery = z.infer<typeof groupObservationsQuerySchema>;
