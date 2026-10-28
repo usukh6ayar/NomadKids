@@ -133,6 +133,17 @@ export class AuthService {
    * cheaper a way to guess a password than the sign-in itself.
    */
   private async verifyCredentials(identifier: string, password: string, ctx: RequestContext) {
+    /*
+     * ★ An e-mail address is named as such (2026-10-28): a solo teacher typed
+     * the address their sign-up form had asked for, nine times, was told the
+     * password was wrong, reset it, and still could not get in. No username
+     * can hold "@" (`createUserSchema`), so this says nothing about any
+     * account — and it is not a failed guess, so it counts toward no lockout.
+     */
+    if (identifier.includes("@")) {
+      throw new UnauthorizedException(EMAIL_IDENTIFIER);
+    }
+
     const since = new Date(Date.now() - LOCKOUT_WINDOW_MS);
     const failures = await this.repo.countRecentFailures(identifier, since);
 
@@ -788,6 +799,8 @@ export class AuthService {
 
 /** One message for every credential failure — never "no such user". */
 const INVALID_CREDENTIALS = "Нэвтрэх нэр эсвэл нууц үг буруу байна";
+const EMAIL_IDENTIFIER =
+  "И-мэйлээр нэвтрэх боломжгүй. Утасны дугаар эсвэл нэвтрэх нэрээ оруулна уу.";
 const SESSION_EXPIRED = "Нэвтрэх хугацаа дууссан байна. Дахин нэвтэрнэ үү.";
 
 /**
