@@ -126,6 +126,18 @@ describe("POST /auth/login", () => {
       .post("/v1/auth/login")
       .send({ identifier: user.email, password: TEST_PASSWORD });
     expect(byEmail.status).toBe(401);
+    // ★ 2026-10-28: said plainly, not «нууц үг буруу» — and no lockout toward it.
+    expect(byEmail.body.detail).toContain("И-мэйлээр нэвтрэх боломжгүй");
+    expect(await db.loginAttempt.count({ where: { identifier: user.email! } })).toBe(0);
+  });
+
+  it("names an e-mail as such even for an address nobody holds", async () => {
+    // The message follows the shape of what was typed, never an account.
+    const res = await request(server())
+      .post("/v1/auth/login")
+      .send({ identifier: `${uniq()}@nowhere.mn`, password: "WrongPass123" });
+    expect(res.status).toBe(401);
+    expect(res.body.detail).toContain("И-мэйлээр нэвтрэх боломжгүй");
   });
 
   it("rejects a wrong password", async () => {
