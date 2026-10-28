@@ -97,7 +97,7 @@ describe("requesting a report", () => {
     const openSpy = vi.fn(() => tab);
     vi.stubGlobal("open", openSpy);
 
-    stubApi([
+    const api = stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
       {
         path: "/reports",
@@ -140,6 +140,13 @@ describe("requesting a report", () => {
 
     // Opened blank and synchronously — the gesture-preserving shape.
     expect(openSpy).toHaveBeenCalledWith("", "_blank", "noopener,noreferrer");
+    expect(api.calls.some((c) => c.url.endsWith("/download?disposition=attachment"))).toBe(true);
+
+    // ★ «Харах» (2026-10-28): the same file, shown rather than saved.
+    await user.click(screen.getByRole("button", { name: /Харах/ }));
+    await waitFor(() =>
+      expect(api.calls.some((c) => c.url.endsWith("/download?disposition=inline"))).toBe(true),
+    );
   });
 
   /**

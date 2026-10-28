@@ -123,7 +123,11 @@ export class ReportsService {
    * caller has already leaked the object even if the response is discarded.
    * Same ordering, and the same reason, as `MediaService.getDownloadUrl`.
    */
-  async downloadUrl(actor: Actor, jobId: string): Promise<{ url: string; expiresIn: number }> {
+  async downloadUrl(
+    actor: Actor,
+    jobId: string,
+    disposition: "inline" | "attachment" = "inline",
+  ): Promise<{ url: string; expiresIn: number }> {
     const job = await this.repo.findJob(jobId);
     if (!job || !job.childId) throw new NotFoundException();
 
@@ -145,13 +149,14 @@ export class ReportsService {
       objectType: "ReportJob",
       objectId: job.id,
       childId: job.childId,
-      metadata: { type: job.type },
+      metadata: { type: job.type, disposition },
     });
 
     // Never logged: valid until it expires.
     const url = await this.storage.presignedGetUrl(
       job.resultMedia.storageKey,
       job.resultMedia.originalName,
+      disposition,
     );
 
     return { url, expiresIn: 300 };

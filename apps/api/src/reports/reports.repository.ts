@@ -211,6 +211,7 @@ export class ReportsRepository {
       fileSize: number;
       pageCount: number;
       expiresAt: Date;
+      contentHash?: string | null;
     },
   ): Promise<{ attached: boolean; mediaFileId: string }> {
     return this.prisma.$transaction(async (tx) => {
@@ -247,12 +248,38 @@ export class ReportsRepository {
           fileSize: result.fileSize,
           pageCount: result.pageCount,
           expiresAt: result.expiresAt,
+          contentHash: result.contentHash ?? null,
           // A retry that succeeds clears the previous attempt's message.
           errorMessage: null,
         },
       });
 
       return { attached: true, mediaFileId: media.id };
+    });
+  }
+
+  /**
+   * A finished report of the same child and type with exactly this content,
+   * whose file is still there for a while — copied instead of rendered again.
+   */
+  findReusableResult(input: { childId: string; type: ReportType; contentHash: string }) {
+    return this.prisma.reportJob.findFirst({
+      where: {
+        childId: input.childId,
+        type: input.type,
+        contentHash: input.contentHash,
+        status: "DONE",
+        deletedAt: null,
+        // An hour's margin: the copy must not race the retention sweep.
+        expiresAt: { gt: new Date(Date.now() + 60 * 60 * 1000) },
+        resultMedia: { deletedAt: null },
+      },
+      orderBy: { completedAt: "desc" },
+      select: {
+        fileSize: true,
+        pageCount: true,
+        resultMedia: { select: { storageKey: true } },
+      },
     });
   }
 

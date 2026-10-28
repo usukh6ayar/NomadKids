@@ -4803,6 +4803,11 @@ model ReportJob {
   pageCount         Int     @default(0) @db.SmallInt
   errorMessage      String?
 
+  /// sha256 of what the renderer was given — HTML, header and footer, file
+  /// name. A child's report identical to a finished one is copied rather
+  /// than rendered again (the user, 2026-10-28: «давхар үүсгэлтгүй»).
+  contentHash String? @db.VarChar(64)
+
   requestedAt DateTime  @default(now())
   startedAt   DateTime?
   completedAt DateTime?
@@ -4819,6 +4824,7 @@ model ReportJob {
 
   @@index([childId, requestedAt(sort: Desc)])
   @@index([kindergartenId, status, requestedAt(sort: Desc)])
+  @@index([childId, type, contentHash])
   @@map("report_jobs")
 }
 
