@@ -1,5 +1,6 @@
 import { Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
 import {
+  CopyObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
@@ -141,6 +142,21 @@ export class StorageService {
         "Файл хадгалах сан руу холбогдож чадсангүй. Түр хүлээгээд дахин оролдоно уу.",
       );
     }
+  }
+
+  /**
+   * Copies an object inside the bucket — the store does it, no bytes pass
+   * through the API. A report whose content matches a finished one gets its
+   * own copy (2026-10-28), so each job keeps its own file and lifetime.
+   */
+  async copy(from: string, to: string): Promise<void> {
+    await this.client.send(
+      new CopyObjectCommand({
+        Bucket: this.env.STORAGE_BUCKET,
+        Key: to,
+        CopySource: `${this.env.STORAGE_BUCKET}/${from}`,
+      }),
+    );
   }
 
   /** Streams an object to a file on disk — the transcoder's input. */

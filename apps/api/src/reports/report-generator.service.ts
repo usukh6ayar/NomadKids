@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { createHash } from "node:crypto";
 import {
   AGE_ALBUM_CATEGORY_LABEL,
   MILESTONE_KIND_LABEL,
@@ -32,6 +33,14 @@ import { FinanceReportsService } from "../invoices/finance-reports.service";
 
 /** How long a generated file stays downloadable before the sweep removes it. */
 const RESULT_TTL_DAYS = 14;
+
+/**
+ * The child's own documents — copied from an identical finished render
+ * instead of rendered again (the user, 2026-10-28: a portfolio opened by the
+ * family, then the teacher, then the family again). A contract, an invoice
+ * and a ledger keep their own one-render rules.
+ */
+const REUSABLE_TYPES = new Set(["CHILD_PORTFOLIO", "TERM_REPORT", "ANNUAL_REPORT"]);
 
 /**
  * A safe, fixed failure message.
@@ -125,10 +134,49 @@ export class ReportGeneratorService {
                 ? await this.buildAnnualReport(job.childId!, params)
                 : await this.buildPortfolio(job.childId!, params);
 
-      const pdf = await this.renderer.render(html, chrome);
-
       const storageKey = this.storage.buildKindergartenKey(job.kindergartenId, "reports");
-      await this.storage.put(storageKey, pdf, "application/pdf");
+
+      /*
+       * ★ The same input renders the same file — the HTML carries every
+       * figure, word and embedded photo, and its dates are days, not times.
+       * So a child's report whose input matches a finished one is copied in
+       * the store, and Chromium (the worker's ~600 MB) is not started at all.
+       * A copy that fails falls back to rendering: reuse is an economy,
+       * never a reason for a report to fail.
+       */
+      const contentHash =
+        job.childId && REUSABLE_TYPES.has(job.type)
+          ? createHash("sha256")
+              .update(html)
+              .update("\0")
+              .update(JSON.stringify(chrome ?? null))
+              .update("\0")
+              .update(filename)
+              .digest("hex")
+          : null;
+      let output: { fileSize: number; pageCount: number } | null = null;
+      if (contentHash) {
+        const prior = await this.repo.findReusableResult({
+          childId: job.childId!,
+          type: job.type,
+          contentHash,
+        });
+        if (prior?.resultMedia) {
+          try {
+            await this.storage.copy(prior.resultMedia.storageKey, storageKey);
+            output = { fileSize: prior.fileSize, pageCount: prior.pageCount };
+          } catch (error) {
+            this.logger.warn(
+              `Report job ${jobId}: copying an identical render failed, rendering — ${(error as Error).name}`,
+            );
+          }
+        }
+      }
+      if (!output) {
+        const pdf = await this.renderer.render(html, chrome);
+        await this.storage.put(storageKey, pdf, "application/pdf");
+        output = { fileSize: pdf.byteLength, pageCount: countPages(pdf) };
+      }
 
       // The object exists before anything points at it: a crash between the two
       // leaves a collectable orphan rather than a row that 404s for ever. The
@@ -138,9 +186,10 @@ export class ReportGeneratorService {
         childId: job.childId,
         storageKey,
         originalName: filename,
-        fileSize: pdf.byteLength,
-        pageCount: countPages(pdf),
+        fileSize: output.fileSize,
+        pageCount: output.pageCount,
         expiresAt: new Date(Date.now() + RESULT_TTL_DAYS * 24 * 60 * 60 * 1000),
+        contentHash,
       });
 
       /*

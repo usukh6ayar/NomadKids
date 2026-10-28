@@ -6,7 +6,12 @@ import { RateLimit, RateLimitGuard } from "../common/rate-limit/rate-limit.guard
 import { CurrentActor } from "../auth/decorators/actor.decorator";
 import type { Actor } from "../authz/actor";
 import { ReportsService } from "./reports.service";
-import { createReportSchema, type CreateReportDto } from "./reports.dto";
+import {
+  createReportSchema,
+  downloadQuerySchema,
+  type CreateReportDto,
+  type DownloadQuery,
+} from "./reports.dto";
 
 const jobIdParamSchema = z.object({ jobId: z.uuid() });
 
@@ -58,8 +63,9 @@ export class ReportsController {
   async download(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(jobIdParamSchema)) params: { jobId: string },
+    @Query(new ZodValidationPipe(downloadQuerySchema)) query: DownloadQuery,
   ) {
-    return this.service.downloadUrl(actor, params.jobId);
+    return this.service.downloadUrl(actor, params.jobId, query.disposition);
   }
 }
 

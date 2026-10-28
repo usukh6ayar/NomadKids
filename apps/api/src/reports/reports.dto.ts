@@ -27,3 +27,12 @@ export const createReportSchema = z
     path: ["schoolYearId"],
   });
 export type CreateReportDto = z.infer<typeof createReportSchema>;
+
+/**
+ * «Харах» or «Татаж авах» (the user, 2026-10-28): the same file and the same
+ * checks; only how the browser is told to treat it differs.
+ */
+export const downloadQuerySchema = z
+  .object({ disposition: z.enum(["inline", "attachment"]).default("inline") })
+  .strict();
+export type DownloadQuery = z.infer<typeof downloadQuerySchema>;

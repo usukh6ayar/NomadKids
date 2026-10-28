@@ -2,7 +2,7 @@
 
 import * as Dialog from "@radix-ui/react-dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, FileText, X } from "lucide-react";
+import { Download, Eye, FileText, X } from "lucide-react";
 import { useState } from "react";
 import { downloadUrlSchema, reportJobSchema, type ReportJob } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
@@ -146,12 +146,20 @@ function ReportProgress({ job, onRetry }: { job?: ReportJob; onRetry: () => void
    * `noopener` matters: without it the opened page can reach back through
    * `window.opener` and navigate this one.
    */
+  /*
+   * ★ «Харах» and «Татаж авах» (the user, 2026-10-28): the same file and the
+   * same checks. «Харах» asks the browser to show it in the new tab;
+   * «Татаж авах» to save it. (A phone without a PDF viewer saves either way.)
+   */
   const download = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (disposition: "inline" | "attachment") => {
       const tab = window.open("", "_blank", "noopener,noreferrer");
 
       try {
-        const result = await get(`/reports/${job!.id}/download`, downloadUrlSchema);
+        const result = await get(
+          `/reports/${job!.id}/download?disposition=${disposition}`,
+          downloadUrlSchema,
+        );
 
         if (tab) {
           // The URL is a bearer credential with a short life. It is handed to
@@ -240,10 +248,29 @@ function ReportProgress({ job, onRetry }: { job?: ReportJob; onRetry: () => void
 
       <FormError message={download.isError ? errorMessage(download.error) : null} />
 
-      <Button block size="lg" disabled={download.isPending} onClick={() => download.mutate()}>
-        <Download size={18} />
-        {download.isPending ? "Түр хүлээнэ үү…" : "Татаж авах"}
-      </Button>
+      <div className="grid grid-cols-2 gap-2">
+        <Button
+          block
+          size="lg"
+          disabled={download.isPending}
+          onClick={() => download.mutate("inline")}
+        >
+          <Eye size={18} />
+          {download.isPending && download.variables === "inline" ? "Түр хүлээнэ үү…" : "Харах"}
+        </Button>
+        <Button
+          block
+          size="lg"
+          variant="secondary"
+          disabled={download.isPending}
+          onClick={() => download.mutate("attachment")}
+        >
+          <Download size={18} />
+          {download.isPending && download.variables === "attachment"
+            ? "Түр хүлээнэ үү…"
+            : "Татаж авах"}
+        </Button>
+      </div>
     </div>
   );
 }

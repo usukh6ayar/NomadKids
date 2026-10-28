@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import sharp from "sharp";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestApp } from "./support/app";
 import { resetData, testDb, uniq } from "./support/db";
 import {
@@ -21,6 +21,7 @@ import {
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
 import { StorageService } from "../src/storage/storage.service";
 import { ReportGeneratorService } from "../src/reports/report-generator.service";
+import { PdfRendererService } from "../src/reports/pdf-renderer.service";
 import { ReportRetentionService } from "../src/reports/report-retention.service";
 
 /**
@@ -300,6 +301,15 @@ describe("GET /v1/reports/:jobId/download — audience", () => {
     );
     expect(response.status).toBe(200);
     expect(response.body.url).toContain("http");
+    // «Харах» by default — the browser shows it; «Татаж авах» asks it to save.
+    expect(decodeURIComponent(response.body.url)).toContain("inline;");
+
+    const saved = await authed(
+      request(app.getHttpServer()).get(`/v1/reports/${jobId}/download?disposition=attachment`),
+      teacherA,
+    );
+    expect(saved.status).toBe(200);
+    expect(decodeURIComponent(saved.body.url)).toContain("attachment;");
   }, 180_000);
 
   it("refuses to sign a URL before the job has finished", async () => {
@@ -712,6 +722,74 @@ describe("portfolio generation", () => {
       await db.mediaFile.count({ where: { childId: a.child.id, purpose: "REPORT_OUTPUT" } }),
     ).toBe(1);
   }, 120_000);
+
+  /*
+   * ★ The user, 2026-10-28: a portfolio opened by the family, the teacher and
+   * the family again was rendered three times. Identical input is copied in
+   * the store; Chromium does not start.
+   */
+  it("copies an identical render instead of rendering it again", async () => {
+    await seedObservations(a);
+    const first = await createJob(teacherA, a.child.id);
+    const firstPdf = await generatedPdf(first);
+
+    const render = vi.spyOn(app.get(PdfRendererService), "render");
+    try {
+      const second = await createJob(teacherA, a.child.id);
+      const secondPdf = await generatedPdf(second);
+      expect(render).not.toHaveBeenCalled();
+
+      const [one, two] = await Promise.all(
+        [first, second].map((id) =>
+          db.reportJob.findUniqueOrThrow({ where: { id }, include: { resultMedia: true } }),
+        ),
+      );
+      // Its own file and its own lifetime — never the other job's media row.
+      expect(two.resultMediaFileId).not.toBe(one.resultMediaFileId);
+      expect(two.resultMedia!.storageKey).not.toBe(one.resultMedia!.storageKey);
+      expect(two.contentHash).toBe(one.contentHash);
+      expect(two.pageCount).toBe(one.pageCount);
+      expect(secondPdf.equals(firstPdf)).toBe(true);
+    } finally {
+      render.mockRestore();
+    }
+  }, 180_000);
+
+  it("renders again once the content changed, and never hands a family the staff copy", async () => {
+    await seedObservations(a);
+    const first = await createJob(teacherA, a.child.id);
+    await generatedPdf(first);
+
+    // The family's copy leaves the private note out: different input, own render.
+    const family = await createJob(parentA, a.child.id);
+    const familyText = extractText(await generatedPdf(family));
+    expect(familyText).not.toContain(PRIVATE_NOTE);
+
+    const type = await db.observationType.findFirstOrThrow({ where: { kindergartenId: null } });
+    await db.observation.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        childId: a.child.id,
+        enrollmentId: a.enrollment.id,
+        typeId: type.id,
+        source: "TEACHER",
+        observedOn: new Date("2025-10-03"),
+        situation: "Шинэ ажиглалт нэмэгдлээ",
+        visibleToParents: true,
+        reviewStatus: "APPROVED",
+        includeInReport: true,
+        authorId: a.teacherUser.id,
+      },
+    });
+    const after = await createJob(teacherA, a.child.id);
+    expect(extractText(await generatedPdf(after))).toContain("Шинэ ажиглалт нэмэгдлээ");
+
+    const hashes = await db.reportJob.findMany({
+      where: { id: { in: [first, family, after] } },
+      select: { contentHash: true },
+    });
+    expect(new Set(hashes.map((h) => h.contentHash)).size).toBe(3);
+  }, 240_000);
 
   /**
    * ★ The orphan a redelivered job used to create.
