@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Download, Plus, Upload } from "lucide-react";
+import { Download, Plus } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   childSummarySchema,
@@ -294,6 +294,7 @@ function StaffChildren() {
               fetch: the session cookie rides along on a navigation and the
               browser saves the file itself.
             */}
+            {/* ★ «Импорт» removed — 2026-10-28, the user. */}
             {primaryKindergartenId ? (
               <>
                 <Button asChild size="sm" variant="secondary" className={PHONE_ICON}>
@@ -305,12 +306,6 @@ function StaffChildren() {
                     <Download size={16} aria-hidden />{" "}
                     <span className={PHONE_HIDDEN_LABEL}>Excel</span>
                   </a>
-                </Button>
-                <Button asChild size="sm" variant="secondary" className={PHONE_ICON}>
-                  <Link href="/children/import">
-                    <Upload size={16} aria-hidden />{" "}
-                    <span className={PHONE_HIDDEN_LABEL}>Импорт</span>
-                  </Link>
                 </Button>
               </>
             ) : null}
