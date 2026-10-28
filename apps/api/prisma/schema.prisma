@@ -5758,6 +5758,9 @@ model ContractPayment {
   /// The e-receipt the operator issued by hand on ebarimt — its number only;
   /// nothing here talks to ebarimt (the user, 2026-10-18).
   ebarimtNumber  String?                @db.VarChar(64)
+  /// The operator's note on a period they recorded by hand — «Эрх сунгах»
+  /// (the user, 2026-10-28). What the statement or the call said; free text.
+  note           String?                @db.VarChar(1000)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
