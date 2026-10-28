@@ -129,7 +129,10 @@ services:
         condition: service_healthy
       storage:
         condition: service_healthy
-    # ★ 512 MB per replica, not 2 GB.
+    # ★ 768 MB per replica, not 2 GB. It was 512 MB until 2026-10-28, when
+    # production showed one replica at 478 MB of 512 sixteen hours after a
+    # deploy — no restarts, but no headroom; the box had 1.2 GB available.
+    # Two replicas at 768 MB want the 8 GB VPS (`API_REPLICAS=1` on 4 GB).
     #
     # The old limit existed because this container also rendered PDFs; Chromium
     # needs 1 GB (docs/PDF_SPIKE.md §3) and an OOM kill would have taken the
@@ -144,7 +147,7 @@ services:
       replicas: ${API_REPLICAS:-2}
       resources:
         limits:
-          memory: 512M
+          memory: 768M
         reservations:
           memory: 256M
     networks: [internal]
