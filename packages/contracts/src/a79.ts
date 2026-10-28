@@ -207,6 +207,13 @@ export const A79_LEVELS: A79Level[] = [
       "Ном болон үлгэр, зохиол, болсон үйл явдлыг дэс дараатай тайлбарладаг.",
       "Үлгэр зохиолын төгсгөлийг өөрийн төсөөллөөр үргэлжлүүлэн зохиож ярьдаг.",
       "Өөрийн нэрийн дармал үсгийг дагуулж бичдэг.",
+      // ★ The same words as criterion 11 above — and in the ministry's annex
+      // itself (rows 19 and 22 of its IV-level table, checked against the
+      // legalinfo.mn .docx on 2026-10-28). Kept: dropping it would shift every
+      // later criterion off the official numbering, and inventing a text would
+      // put words in the ministry's mouth. Replace it only with an official one.
+      // Nothing keys on the text: links use the number, comparisons the
+      // indicator key (`_2`), the baseline claims each criterion once.
       "Ном болон үлгэр, зохиол, болсон үйл явдлыг дэс дараатай тайлбарладаг.",
       "10 хүртэлх эд юмсыг оноож тоолдог.",
       "Өгөгдсөн тооноос 20 дотор нэгээр нэмэгдүүлж, хорогдуулж тоолдог.",
