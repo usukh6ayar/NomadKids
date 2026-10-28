@@ -38,3 +38,33 @@ export type RecordTransferDto = z.infer<typeof recordTransferSchema>;
 
 export const setEbarimtSchema = z.object({ ebarimtNumber: ebarimtNumber.nullable() }).strict();
 export type SetEbarimtDto = z.infer<typeof setEbarimtSchema>;
+
+/** «Эрх сунгах»: what the operator is about to record for one kindergarten. */
+export const extensionQuerySchema = z
+  .object({
+    kindergartenId: z.string().uuid(),
+    groups: z.coerce.number().int().min(1).max(500).optional(),
+  })
+  .strict();
+export type ExtensionQuery = z.infer<typeof extensionQuerySchema>;
+
+/**
+ * A transfer recorded from the kindergarten itself — the user, 2026-10-28:
+ * some pay by bank transfer without ever opening «Үйлчилгээний эрх», and the
+ * operator enters the payment, a note and the date the service runs to.
+ * `coversTo` comes suggested (the term's or the year's end) and may be moved.
+ */
+export const recordExtensionSchema = z
+  .object({
+    kindergartenId: z.string().uuid(),
+    period: z.enum(["TERM", "YEAR"]),
+    groupCount: z.number().int().min(1).max(500),
+    amount: money,
+    paidOn: isoDate,
+    coversTo: isoDate,
+    note: z.string().trim().max(1000).optional(),
+    reference: z.string().trim().max(200).optional(),
+    ebarimtNumber: ebarimtNumber.optional(),
+  })
+  .strict();
+export type RecordExtensionDto = z.infer<typeof recordExtensionSchema>;

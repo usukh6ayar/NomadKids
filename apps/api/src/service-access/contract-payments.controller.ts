@@ -4,10 +4,14 @@ import { CurrentActor } from "../auth/decorators/actor.decorator";
 import type { Actor } from "../authz/actor";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import {
+  extensionQuerySchema,
   listContractPaymentsQuerySchema,
+  recordExtensionSchema,
   recordTransferSchema,
   setEbarimtSchema,
+  type ExtensionQuery,
   type ListContractPaymentsQuery,
+  type RecordExtensionDto,
   type RecordTransferDto,
   type SetEbarimtDto,
 } from "./contract-payments.dto";
@@ -31,6 +35,24 @@ export class ContractPaymentsController {
     @Query(new ZodValidationPipe(listContractPaymentsQuerySchema)) query: ListContractPaymentsQuery,
   ) {
     return this.service.list(actor, query);
+  }
+
+  /** «Эрх сунгах»: what recording a transfer for a kindergarten would cover. */
+  @Get("extension")
+  extensionPreview(
+    @CurrentActor() actor: Actor,
+    @Query(new ZodValidationPipe(extensionQuerySchema)) query: ExtensionQuery,
+  ) {
+    return this.service.extensionPreview(actor, query);
+  }
+
+  /** «Эрх сунгах»: a transfer recorded from the kindergarten, with its end and a note. */
+  @Post("extension")
+  recordExtension(
+    @CurrentActor() actor: Actor,
+    @Body(new ZodValidationPipe(recordExtensionSchema)) body: RecordExtensionDto,
+  ) {
+    return this.service.recordExtension(actor, body);
   }
 
   @Post(":id/record")

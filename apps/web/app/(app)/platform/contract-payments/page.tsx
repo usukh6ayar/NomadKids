@@ -1,7 +1,8 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Landmark, X } from "lucide-react";
+import { paginated, platformKindergartenSchema } from "@kinder/contracts";
+import { CalendarPlus, Landmark, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { z } from "zod";
 import { get, mutate } from "@/lib/api/browser";
@@ -11,7 +12,7 @@ import { PlatformPageHeading } from "@/components/platform/platform-page-heading
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Field, Input } from "@/components/ui/field";
+import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { useBackdropDismiss } from "@/components/ui/modal-overlay";
@@ -27,7 +28,12 @@ import { cn } from "@/lib/utils";
  * — and keeps the number of the e-receipt issued on ebarimt by hand.
  *
  * ★ `GET /platform/contract-payments`, `POST …/:id/record`,
- * `PATCH …/:id/ebarimt` — superadmin only; anyone else gets 404.
+ * `PATCH …/:id/ebarimt`, `GET|POST …/extension` — superadmin only; anyone
+ * else gets 404.
+ *
+ * ★ «Эрх сунгах» (the user, 2026-10-28): a kindergarten that paid by
+ * transfer without opening «Үйлчилгээний эрх» is recorded from the
+ * kindergarten itself — the end comes suggested and may be moved, with a note.
  */
 const paymentSchema = z.object({
   id: z.string(),
@@ -44,8 +50,37 @@ const paymentSchema = z.object({
   paidAt: z.string().nullable(),
   reference: z.string().nullable(),
   ebarimtNumber: z.string().nullable(),
+  note: z.string().nullable().optional(),
 });
 type Payment = z.infer<typeof paymentSchema>;
+
+const kindergartensSchema = paginated(platformKindergartenSchema);
+
+const optionSchema = z.object({
+  coversFrom: z.string(),
+  coversTo: z.string(),
+  perGroup: z.string(),
+  amount: z.string(),
+  label: z.string(),
+});
+
+const extensionSchema = z.object({
+  kindergarten: z.object({ id: z.string(), name: z.string() }),
+  contract: z.object({ id: z.string(), number: z.string(), endsOn: z.string() }).nullable(),
+  awaitingSignature: z.boolean(),
+  registeredGroups: z.number().int(),
+  initialDue: z
+    .object({
+      id: z.string(),
+      period: z.enum(["TERM", "YEAR"]),
+      coversFrom: z.string(),
+      coversTo: z.string(),
+      amount: z.string(),
+    })
+    .nullable(),
+  groupCount: z.number().int().nullable(),
+  options: z.object({ TERM: optionSchema.nullable(), YEAR: optionSchema.nullable() }).nullable(),
+});
 
 const listSchema = z.object({
   items: z.array(paymentSchema),
@@ -73,6 +108,7 @@ function ContractPayments() {
   const [filter, setFilter] = useState<Filter>("PENDING");
   const [recording, setRecording] = useState<Payment | null>(null);
   const [receipting, setReceipting] = useState<Payment | null>(null);
+  const [extending, setExtending] = useState(false);
 
   const list = useQuery({
     queryKey: queryKey(filter),
@@ -90,6 +126,13 @@ function ContractPayments() {
         lede="Цэцэрлэгүүдийн гэрээний төлбөр — дансаар орсныг бүртгэж, ebarimt-ын дугаарыг хадгална."
         mark={<Landmark />}
       />
+
+      <div>
+        <Button onClick={() => setExtending(true)}>
+          <CalendarPlus size={18} aria-hidden="true" />
+          Эрх сунгах
+        </Button>
+      </div>
 
       <div
         role="radiogroup"
@@ -144,6 +187,7 @@ function ContractPayments() {
       {receipting ? (
         <EbarimtDialog payment={receipting} onClose={() => setReceipting(null)} />
       ) : null}
+      {extending ? <ExtensionDialog onClose={() => setExtending(false)} /> : null}
     </div>
   );
 }
@@ -196,6 +240,9 @@ function PaymentCard({
           <span className="text-caption text-muted">Гүйлгээний утга: {payment.reference}</span>
         ) : null}
       </div>
+      {payment.note ? (
+        <p className="whitespace-pre-line text-body text-muted">Тэмдэглэл: {payment.note}</p>
+      ) : null}
 
       <div className="flex flex-wrap gap-2">
         {payment.status === "PENDING" ? (
@@ -309,6 +356,302 @@ function RecordTransferDialog({ payment, onClose }: { payment: Payment; onClose:
         <div className="flex flex-wrap gap-2 border-t border-border pt-4">
           <Button type="submit" disabled={record.isPending}>
             {record.isPending ? "Бүртгэж байна…" : "Бүртгэх"}
+          </Button>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={record.isPending}>
+            Болих
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/**
+ * «Эрх сунгах» — a transfer recorded from the kindergarten itself. The
+ * server suggests the end and the amount (the first period still owed, or
+ * the term or year a renewal covers); the operator may change both and adds
+ * a note. Settled like QPay, so «Орлого» counts it.
+ */
+function ExtensionDialog({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const [kindergartenId, setKindergartenId] = useState("");
+  const [period, setPeriod] = useState<"TERM" | "YEAR">("TERM");
+  const [groups, setGroups] = useState("");
+  const [amount, setAmount] = useState<string | null>(null);
+  const [coversTo, setCoversTo] = useState<string | null>(null);
+  const [paidOn, setPaidOn] = useState(todayLocal());
+  const [note, setNote] = useState("");
+  const [reference, setReference] = useState("");
+  const [ebarimtNumber, setEbarimtNumber] = useState("");
+
+  const kindergartens = useQuery({
+    queryKey: ["platform", "kindergartens", "extension-targets"],
+    queryFn: () => get("/platform/kindergartens?page=1&pageSize=100", kindergartensSchema),
+  });
+  const groupCount = /^\d+$/.test(groups) && Number(groups) > 0 ? Number(groups) : null;
+  const preview = useQuery({
+    queryKey: ["platform", "contract-payments", "extension", kindergartenId, groupCount],
+    queryFn: () =>
+      get(
+        `/platform/contract-payments/extension?kindergartenId=${kindergartenId}${groupCount ? `&groups=${groupCount}` : ""}`,
+        extensionSchema,
+      ),
+    enabled: Boolean(kindergartenId),
+    retry: false,
+  });
+
+  const view = preview.data;
+  const suggestion = view?.initialDue ?? view?.options?.[period] ?? null;
+  const shownAmount = amount ?? suggestion?.amount.replace(/\.00$/, "") ?? "";
+  const shownCoversTo = coversTo ?? suggestion?.coversTo ?? "";
+  const shownGroups = groups || (view?.groupCount ? String(view.groupCount) : "");
+  const blocked = view
+    ? !view.contract
+      ? view.awaitingSignature
+        ? "Эрхлэгч гэрээг хараахан хүлээн аваагүй байна. «Үйлчилгээний эрх»-ээс гэрээгээ хүлээн авсны дараа бүртгэнэ."
+        : "Энэ цэцэрлэгт идэвхтэй гэрээ алга."
+      : !suggestion
+        ? "Энэ хичээлийн жилд жилээр төлөх сар үлдээгүй. Улирлаар сунгана уу."
+        : null
+    : null;
+
+  const record = useMutation({
+    mutationFn: () =>
+      mutate("/platform/contract-payments/extension", z.unknown(), {
+        method: "POST",
+        body: {
+          kindergartenId,
+          period: view?.initialDue?.period ?? period,
+          groupCount: Number(shownGroups),
+          amount: shownAmount.trim(),
+          paidOn,
+          coversTo: shownCoversTo,
+          ...(note.trim() ? { note: note.trim() } : {}),
+          ...(reference.trim() ? { reference: reference.trim() } : {}),
+          ...(ebarimtNumber.trim() ? { ebarimtNumber: ebarimtNumber.trim() } : {}),
+        },
+      }),
+    onSuccess: () => {
+      toast.success("Эрх сунгагдаж, төлбөр орлогод бүртгэгдлээ.");
+      void queryClient.invalidateQueries({ queryKey: ["platform"] });
+      onClose();
+    },
+  });
+  const errors = fieldErrors(record.error);
+
+  function resetSuggested() {
+    setAmount(null);
+    setCoversTo(null);
+  }
+
+  function onSubmit(event: FormEvent) {
+    event.preventDefault();
+    if (!record.isPending && view?.contract && suggestion) record.mutate();
+  }
+
+  return (
+    <Modal label="Эрх сунгах" onClose={onClose}>
+      <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+        <ModalHeading title="Эрх сунгах" onClose={onClose} />
+        <p className="text-body text-muted">
+          Дансаар орсон гэрээний төлбөрийг цэцэрлэг дээр нь бүртгэж, эрхийг сунгана.
+        </p>
+        <FormError
+          message={
+            record.isError
+              ? errorMessage(record.error)
+              : preview.isError
+                ? errorMessage(preview.error)
+                : null
+          }
+        />
+
+        <Field label="Цэцэрлэг" required>
+          {({ id, describedBy }) => (
+            <Select
+              id={id}
+              aria-describedby={describedBy}
+              value={kindergartenId}
+              onChange={(event) => {
+                setKindergartenId(event.target.value);
+                setGroups("");
+                resetSuggested();
+              }}
+            >
+              <option value="">
+                {kindergartens.isLoading ? "Ачаалж байна…" : "Цэцэрлэг сонгоно уу"}
+              </option>
+              {(kindergartens.data?.items ?? [])
+                .filter((kg) => kg.isActive)
+                .sort((x, y) => x.name.localeCompare(y.name, "mn"))
+                .map((kg) => (
+                  <option key={kg.id} value={kg.id}>
+                    {kg.name}
+                  </option>
+                ))}
+            </Select>
+          )}
+        </Field>
+
+        {kindergartenId && preview.isLoading ? <LoadingState rows={2} /> : null}
+        {blocked ? <FormError message={blocked} /> : null}
+
+        {view?.contract && suggestion ? (
+          <>
+            <p className="text-body text-ink">
+              №{view.contract.number} · одоогийн эрх{" "}
+              <strong>{formatDate(view.contract.endsOn)}</strong> хүртэл
+            </p>
+            {view.initialDue ? (
+              <p className="text-body text-muted">
+                Гэрээний эхний төлбөр хүлээгдэж байна — энэ бүртгэл түүнийг төлнө.
+              </p>
+            ) : (
+              <div
+                role="radiogroup"
+                aria-label="Хугацаа"
+                className="grid grid-cols-2 gap-1 rounded-pill bg-canvas p-1"
+              >
+                {(
+                  [
+                    ["TERM", "Улирал"],
+                    ["YEAR", "Хичээлийн жил"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={period === value}
+                    disabled={!view.options?.[value]}
+                    onClick={() => {
+                      setPeriod(value);
+                      resetSuggested();
+                    }}
+                    className={cn(
+                      "min-h-11 rounded-pill px-3 text-body font-semibold transition-colors disabled:opacity-40",
+                      period === value ? "bg-primary text-white shadow-sm" : "text-muted",
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {!view.initialDue && "label" in suggestion ? (
+              <p className="text-caption text-muted">
+                Санал: {suggestion.label} · {tugrik(Number(suggestion.amount))}
+              </p>
+            ) : null}
+
+            <Field
+              label="Бүлгийн тоо"
+              error={errors.groupCount}
+              hint={`Одоо бүртгэлтэй: ${view.registeredGroups}`}
+              required
+            >
+              {({ id, describedBy, invalid }) => (
+                <Input
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  inputMode="numeric"
+                  value={shownGroups}
+                  onChange={(event) => {
+                    setGroups(event.target.value.replace(/\D/g, ""));
+                    resetSuggested();
+                  }}
+                />
+              )}
+            </Field>
+            <Field label="Хүлээн авсан дүн" error={errors.amount} required>
+              {({ id, describedBy, invalid }) => (
+                <Input
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  inputMode="decimal"
+                  value={shownAmount}
+                  onChange={(event) => setAmount(event.target.value)}
+                />
+              )}
+            </Field>
+            <Field label="Орсон огноо" error={errors.paidOn} required>
+              {({ id, describedBy, invalid }) => (
+                <Input
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  type="date"
+                  max={todayLocal()}
+                  value={paidOn}
+                  onChange={(event) => setPaidOn(event.target.value)}
+                />
+              )}
+            </Field>
+            <Field
+              label="Эрх дуусах огноо"
+              error={errors.coversTo}
+              hint="Санал болгосон огноог өөрчилж болно."
+              required
+            >
+              {({ id, describedBy, invalid }) => (
+                <Input
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  type="date"
+                  value={shownCoversTo}
+                  onChange={(event) => setCoversTo(event.target.value)}
+                />
+              )}
+            </Field>
+            <Field label="Тэмдэглэл" error={errors.note}>
+              {({ id, describedBy }) => (
+                <Textarea
+                  id={id}
+                  aria-describedby={describedBy}
+                  maxLength={1000}
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
+                  placeholder="Жишээ нь: Хаан банкны хуулга, захиралтай утсаар ярьсан"
+                />
+              )}
+            </Field>
+            <Field label="Гүйлгээний утга" error={errors.reference}>
+              {({ id, describedBy }) => (
+                <Input
+                  id={id}
+                  aria-describedby={describedBy}
+                  value={reference}
+                  onChange={(event) => setReference(event.target.value)}
+                />
+              )}
+            </Field>
+            <Field
+              label="ebarimt-ын дугаар"
+              error={errors.ebarimtNumber}
+              hint="Дараа нь оруулж болно."
+            >
+              {({ id, describedBy }) => (
+                <Input
+                  id={id}
+                  aria-describedby={describedBy}
+                  value={ebarimtNumber}
+                  onChange={(event) => setEbarimtNumber(event.target.value)}
+                />
+              )}
+            </Field>
+          </>
+        ) : null}
+
+        <div className="flex flex-wrap gap-2 border-t border-border pt-4">
+          <Button
+            type="submit"
+            disabled={record.isPending || !view?.contract || !suggestion || !shownGroups}
+          >
+            {record.isPending ? "Бүртгэж байна…" : "Бүртгэж сунгах"}
           </Button>
           <Button type="button" variant="ghost" onClick={onClose} disabled={record.isPending}>
             Болих

@@ -128,6 +128,7 @@ export class ContractPaymentsRepository {
           paidAt: true,
           reference: true,
           ebarimtNumber: true,
+          note: true,
           createdAt: true,
           kindergarten: { select: { id: true, name: true } },
           contract: { select: { number: true } },
@@ -165,6 +166,86 @@ export class ContractPaymentsRepository {
     return this.prisma.$transaction((tx) =>
       settleContractPayment(tx, id, { ...data, method: "BANK_TRANSFER" }),
     );
+  }
+
+  /** What «Эрх сунгах» is recorded against: the kindergarten and its contracts' states. */
+  async extensionTarget(kindergartenId: string) {
+    const [kindergarten, active, toSign, groups] = await Promise.all([
+      this.prisma.kindergarten.findFirst({
+        where: { id: kindergartenId, deletedAt: null },
+        select: { id: true, name: true, kind: true },
+      }),
+      this.prisma.contract.findFirst({
+        where: { kindergartenId, status: "ACTIVE", deletedAt: null },
+        orderBy: { endsOn: "desc" },
+        select: { id: true, number: true, perGroupMonthlyFee: true, endsOn: true },
+      }),
+      this.prisma.contract.count({
+        where: { kindergartenId, status: "PENDING_SIGNATURE", deletedAt: null },
+      }),
+      this.prisma.group.count({
+        where: {
+          kindergartenId,
+          deletedAt: null,
+          status: "ACTIVE",
+          schoolYear: { isCurrent: true, deletedAt: null },
+        },
+      }),
+    ]);
+    const initialDue = active
+      ? await this.prisma.contractPayment.findFirst({
+          where: { contractId: active.id, initial: true, status: "PENDING", deletedAt: null },
+        })
+      : null;
+    return { kindergarten, contract: active, awaitingSignature: toSign > 0, groups, initialDue };
+  }
+
+  /**
+   * «Эрх сунгах» in one transaction — the period's row found or created, given
+   * the operator's end, and settled as a transfer. Never a PENDING row left
+   * behind for the director to think they owe when the settle refuses.
+   *
+   * `existing` is the row to settle (the owed first period, or a director's
+   * pending renewal for the same start); otherwise `create` makes one.
+   */
+  recordExtension(input: {
+    existingId: string | null;
+    create: Omit<Prisma.ContractPaymentUncheckedCreateInput, "status"> | null;
+    coversTo: Date;
+    groupCount: number;
+    note: string | null;
+    settle: {
+      paidAt: Date;
+      amount: string;
+      reference: string | null;
+      ebarimtNumber: string | null;
+      recordedById: string;
+    };
+  }) {
+    return this.prisma.$transaction(async (tx) => {
+      let id = input.existingId;
+      if (!id) {
+        id = (await tx.contractPayment.create({ data: input.create! })).id;
+      }
+      const set = await tx.contractPayment.updateMany({
+        where: { id, status: "PENDING", deletedAt: null },
+        data: { coversTo: input.coversTo, groupCount: input.groupCount, note: input.note },
+      });
+      if (set.count === 0) return { id, result: { claimed: false } as SettleResult };
+      const result = await settleContractPayment(tx, id, {
+        ...input.settle,
+        method: "BANK_TRANSFER",
+      });
+      return { id, result };
+    });
+  }
+
+  /** The renewal row for one period and start, if a director already drew it. */
+  findRenewal(contractId: string, period: "TERM" | "YEAR", coversFrom: Date) {
+    return this.prisma.contractPayment.findFirst({
+      where: { contractId, initial: false, period, coversFrom, deletedAt: null },
+      select: { id: true, status: true, amount: true, coversTo: true },
+    });
   }
 
   /** The e-receipt's number, on a paid period — `false` when it is not paid. */

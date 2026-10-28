@@ -1,7 +1,7 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { renderWithProviders, sessionFor, stubApi } from "./support/render";
+import { renderWithProviders, selectOption, sessionFor, stubApi } from "./support/render";
 import PlatformContractPaymentsPage from "@/app/(app)/platform/contract-payments/page";
 
 /*
@@ -102,5 +102,91 @@ describe("the operator's contract payments", () => {
 
     expect(await screen.findByText("ebarimt-ын дугаар хадгалагдлаа.")).toBeInTheDocument();
     expect(api.calls.find((c) => c.method === "PATCH")?.body).toEqual({ ebarimtNumber: "EB-77" });
+  });
+
+  /*
+   * ★ «Эрх сунгах» — the user, 2026-10-28: a kindergarten that paid by
+   * transfer without opening «Үйлчилгээний эрх» is recorded from the
+   * kindergarten itself; the end comes suggested and may be moved, with a note.
+   */
+  it("extends a kindergarten's service from the kindergarten, with its end and a note", async () => {
+    const user = userEvent.setup();
+    const KG = "66666666-6666-4666-8666-666666666666";
+    const api = stubApi([
+      { path: "/auth/me", body: operator() },
+      {
+        path: "/platform/kindergartens",
+        body: {
+          items: [
+            {
+              id: KG,
+              name: "4-р цэцэрлэг",
+              isActive: true,
+              createdAt: "2026-09-01T00:00:00.000Z",
+            },
+          ],
+          page: 1,
+          pageSize: 100,
+          total: 1,
+          totalPages: 1,
+        },
+      },
+      {
+        path: "/platform/contract-payments/extension",
+        method: "GET",
+        body: {
+          kindergarten: { id: KG, name: "4-р цэцэрлэг" },
+          contract: { id: "c-1", number: "NK-2026-000001", endsOn: "2026-09-30" },
+          awaitingSignature: false,
+          registeredGroups: 13,
+          initialDue: null,
+          groupCount: 13,
+          options: {
+            TERM: {
+              coversFrom: "2026-09-01",
+              coversTo: "2026-12-31",
+              perGroup: "4000.00",
+              amount: "52000.00",
+              label: "I улирал",
+            },
+            YEAR: null,
+          },
+        },
+      },
+      {
+        path: "/platform/contract-payments/extension",
+        method: "POST",
+        status: 201,
+        body: { id: "p-1", status: "PAID", amount: "52000.00", overlaps: false },
+      },
+      { path: "/platform/contract-payments", method: "GET", body: { items: [], total: 0 } },
+    ]);
+    renderWithProviders(<PlatformContractPaymentsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Эрх сунгах" }));
+    await selectOption(user, /Цэцэрлэг/, "4-р цэцэрлэг");
+
+    const dialog = screen.getByRole("dialog", { name: "Эрх сунгах" });
+    const end = await within(dialog).findByLabelText(/Эрх дуусах огноо/);
+    expect(end).toHaveValue("2026-12-31");
+    expect(within(dialog).getByLabelText(/Хүлээн авсан дүн/)).toHaveValue("52000");
+    await user.clear(end);
+    await user.type(end, "2027-01-31");
+    await user.type(within(dialog).getByLabelText(/Тэмдэглэл/), "Хаан банкны хуулга");
+    await user.click(within(dialog).getByRole("button", { name: "Бүртгэж сунгах" }));
+
+    expect(
+      await screen.findByText("Эрх сунгагдаж, төлбөр орлогод бүртгэгдлээ."),
+    ).toBeInTheDocument();
+    expect(
+      api.calls.find((c) => c.method === "POST" && c.url.endsWith("/extension"))?.body,
+    ).toMatchObject({
+      kindergartenId: KG,
+      period: "TERM",
+      groupCount: 13,
+      amount: "52000",
+      coversTo: "2027-01-31",
+      note: "Хаан банкны хуулга",
+    });
   });
 });
