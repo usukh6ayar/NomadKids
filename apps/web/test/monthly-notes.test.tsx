@@ -110,7 +110,9 @@ describe("monthly notes", () => {
     await waitFor(() =>
       expect(api.calls.some((call) => call.url.includes("/observations"))).toBe(true),
     );
-    await waitFor(() => expect(screen.queryByText(/Бүлгийн явцын үнэлгээ/)).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByText(/Бүлгийн явцын үнэлгээ/)).not.toBeInTheDocument(),
+    );
     expect(container.textContent).toBe("");
   });
 });

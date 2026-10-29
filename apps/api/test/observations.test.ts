@@ -976,10 +976,7 @@ describe("group month of notes", () => {
       data: { authorId: a.adminUser.id },
     });
     const month = () =>
-      authed(
-        request(server()).get(`/v1/groups/${a.group.id}/observations?${FEBRUARY}`),
-        teacherA,
-      );
+      authed(request(server()).get(`/v1/groups/${a.group.id}/observations?${FEBRUARY}`), teacherA);
     expect((await month()).body.total).toBe(2);
 
     await db.enrollment.updateMany({
