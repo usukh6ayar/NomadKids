@@ -7,6 +7,7 @@ import {
 import { AuditRepository } from "../audit/audit.repository";
 import { AuthzRepository } from "../authz/authz.repository";
 import { ChildAccessService } from "../authz/child-access.service";
+import { GroupAccessService } from "../authz/group-access.service";
 import { TenantAccessService } from "../authz/tenant-access.service";
 import { canEditObservationAsStaff, canObserveChild, isGuardianOf } from "../authz/child-access";
 import type { Actor } from "../authz/actor";
@@ -21,6 +22,7 @@ import {
 import type {
   CreateObservationDto,
   CreateParentObservationDto,
+  GroupObservationsQuery,
   ListObservationsQuery,
   ReviewObservationDto,
   UpdateObservationDto,
@@ -34,6 +36,7 @@ export class ObservationsService {
     private readonly authz: AuthzRepository,
     private readonly audit: AuditRepository,
     private readonly tenants: TenantAccessService,
+    private readonly groupAccess: GroupAccessService,
   ) {}
 
   /**
@@ -109,6 +112,33 @@ export class ObservationsService {
       /* One bucket per day that has notes — the window's own bar chart. */
       byDate,
     };
+  }
+
+  /**
+   * «Сарын тэмдэглэл» — a month of the group's teacher notes, to read and print.
+   *
+   * ★ The lead teacher only (2026-10-28, the client): not the assistant, not
+   * the director. Everyone else gets 404, as for any group they cannot reach.
+   */
+  async listGroupObservations(actor: Actor, groupId: string, query: GroupObservationsQuery) {
+    const group = await this.groupAccess.assertLeadsGroup(actor, groupId);
+    const { items, total } = await this.repo.listGroupTeacherObservations(
+      actor.userId,
+      groupId,
+      group.kindergartenId,
+      query.from,
+      query.to,
+      query,
+    );
+    return paginate(
+      items.map(({ media, ...row }) => ({
+        ...row,
+        domains: row.domains.map(({ domain }) => domain),
+        photo: media[0] ?? null,
+      })),
+      total,
+      query,
+    );
   }
 
   async listTypes(actor: Actor, childId: string) {

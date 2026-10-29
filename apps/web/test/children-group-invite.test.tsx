@@ -29,9 +29,10 @@ describe("the teacher's roster header", () => {
 
   /*
     ★ 2026-10-17, the user: «Excel · Импорт · Бүлгээр урих · Захиа · Хүүхэд»
-    on one phone line, the first three as icons alone.
+    on one phone line, the first three as icons alone. «Импорт» removed
+    2026-10-28, the user.
   */
-  it("reads «Excel · Импорт · Бүлгээр урих · Захиа · Хүүхэд», the first three icons on a phone", async () => {
+  it("reads «Excel · Бүлгээр урих · Захиа · Хүүхэд», the first two icons on a phone", async () => {
     stub("TEACHER");
     renderWithProviders(<ChildrenPage />);
 
@@ -44,11 +45,11 @@ describe("the teacher's roster header", () => {
 
     for (const [control, word] of [
       [screen.getByRole("link", { name: "Excel" }), "Excel"],
-      [screen.getByRole("link", { name: "Импорт" }), "Импорт"],
       [invite, "Бүлгээр урих"],
     ] as const) {
       expect(within(control).getByText(word)).toHaveClass("max-sm:sr-only");
     }
+    expect(screen.queryByRole("link", { name: "Импорт" })).toBeNull();
     for (const control of [letter, register]) {
       expect(control).toHaveClass("max-sm:text-compact", "max-sm:flex-auto", "max-sm:px-1.5");
     }

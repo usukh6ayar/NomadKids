@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import {
   ChildObservationsController,
   GroupObservationStatsController,
+  GroupObservationsController,
   ObservationsController,
   ParentObservationsController,
 } from "./observations.controller";
@@ -14,6 +15,7 @@ import { ObservationsService } from "./observations.service";
     ParentObservationsController,
     ObservationsController,
     GroupObservationStatsController,
+    GroupObservationsController,
   ],
   providers: [ObservationsService, ObservationsRepository],
   exports: [ObservationsService, ObservationsRepository],

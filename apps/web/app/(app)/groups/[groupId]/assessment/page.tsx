@@ -23,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { ChildPickerDialog } from "@/components/child/child-picker-dialog";
 import { useToast } from "@/components/ui/toast";
 import Link from "next/link";
-import { Plus, Printer } from "lucide-react";
+import { Plus } from "lucide-react";
 import {
   MAX_PAGE_SIZE,
   childSummarySchema,
@@ -353,6 +353,8 @@ function GroupAssessment() {
         ★ Beside the title: + and a print icon — 2026-10-07, the client. The ⋮
         menu (Хэвлэх, Бүлгийн мэдээлэл) it replaces had one entry left worth a
         press, so that entry is the button.
+
+        ★★ The print icon is gone — 2026-10-28, the client.
       */}
       <PageHeader
         title="Явцын үнэлгээ"
@@ -363,17 +365,6 @@ function GroupAssessment() {
               groupId={groupId}
               notesPerChildTarget={group.data?.monthlyNotesPerChildGoal ?? null}
             />
-            {/* ★ A print icon in place of the ⋮ menu — 2026-10-07, the client. */}
-            <Button
-              type="button"
-              variant="secondary"
-              size="icon"
-              aria-label="Хэвлэх"
-              title="Хэвлэх"
-              onClick={() => window.print()}
-            >
-              <Printer size={18} aria-hidden="true" />
-            </Button>
           </div>
         }
       />

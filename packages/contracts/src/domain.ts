@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { A79_LEVEL_KEYS, A79_STATUSES } from "./a79";
 import { uuidSchema } from "./ids";
 import { paginated } from "./pagination";
 
@@ -5705,6 +5706,43 @@ export const groupObservationStatsSchema = z.object({
     .default([]),
 });
 export type GroupObservationStats = z.infer<typeof groupObservationStatsSchema>;
+
+/**
+ * One note in «Сарын тэмдэглэл» — `GET /groups/:id/observations`, the lead
+ * teacher's month of the group's notes. The child is named on the row because
+ * the list is the whole group's.
+ */
+export const groupObservationSchema = z.object({
+  id: uuidSchema,
+  childId: uuidSchema,
+  observedOn: z.string(),
+  observedTime: z.string().nullish(),
+  activityName: z.string().nullish(),
+  situation: z.string().nullish(),
+  childDid: z.string().nullish(),
+  childSaid: z.string().nullish(),
+  teacherComment: z.string().nullish(),
+  nextSteps: z.string().nullish(),
+  child: personRefSchema,
+  type: z.object({ id: uuidSchema, name: z.string(), code: z.string().nullish() }),
+  indicator: curriculumIndicatorRefSchema.nullish(),
+  indicatorLevel: z.number().nullish(),
+  author: personRefSchema.nullish(),
+  domains: z.array(namedRefSchema).default([]),
+  /** The note's first photo — one, as the client asked (2026-10-28). */
+  photo: observationMediaSchema.nullish(),
+  /** The А/79 criteria the note evidences — «II · Ш18», and how the skill showed. */
+  a79Links: z
+    .array(
+      z.object({
+        level: z.enum(A79_LEVEL_KEYS),
+        number: z.number(),
+        status: z.enum(A79_STATUSES),
+      }),
+    )
+    .default([]),
+});
+export type GroupObservation = z.infer<typeof groupObservationSchema>;
 
 // ── Parent invoices and payments — `нэмэлт.md` §7–§8 ─────────────────────────
 

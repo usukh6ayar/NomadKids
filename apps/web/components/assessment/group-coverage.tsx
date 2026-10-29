@@ -13,6 +13,7 @@ import {
 } from "@kinder/contracts";
 import { useSession } from "@/lib/auth/session";
 import { GoalDialog } from "./goal-dialog";
+import { MonthlyNotes } from "./monthly-notes";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
@@ -381,6 +382,8 @@ export function GroupCoverage({
         the summary, with no Дэлгэрэнгүй link.
       */}
       <MonthlyCoverage months={months} />
+
+      <MonthlyNotes groupId={groupId} startYear={Number(months[0]!.key.slice(0, 4))} />
     </section>
   );
 }

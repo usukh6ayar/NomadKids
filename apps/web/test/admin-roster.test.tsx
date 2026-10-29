@@ -116,8 +116,11 @@ describe("the director's roster", () => {
     expect(screen.queryByRole("link", { name: /Импорт/ })).toBeNull();
   });
 
-  /* ★ 2026-10-18: without ESIS there is no «ESIS татах», so Excel brings the roster in. */
-  it("offers the Excel import in place of «ESIS татах» where there is no ESIS", async () => {
+  /*
+    ★ 2026-10-18: without ESIS, Excel brought the roster in in place of «ESIS
+    татах». The import is removed — 2026-10-28, the user — so neither is offered.
+  */
+  it("offers no import where there is no ESIS", async () => {
     stubApi([
       { path: "/auth/me", body: { ...sessionFor(["ADMIN"]), esisKindergartenIds: [] } },
       { path: "/children", body: { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 } },
@@ -125,10 +128,8 @@ describe("the director's roster", () => {
     ]);
     renderWithProviders(<ChildrenPage />);
 
-    expect(await screen.findByRole("link", { name: /Импорт/ })).toHaveAttribute(
-      "href",
-      "/children/import",
-    );
+    expect(await screen.findByRole("link", { name: /^Суралцагч$/ })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Импорт/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /ESIS татах/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /ESIS Хөнгөлөлттэй/ })).toBeNull();
   });

@@ -50,6 +50,18 @@ export class GroupAccessService {
   }
 
   /**
+   * The group's lead teacher — not its assistant, not the director.
+   *
+   * ★ «Сарын тэмдэглэл» (2026-10-28, the client): a month of the group's notes
+   * in full, to print, is the lead teacher's alone.
+   */
+  async assertLeadsGroup(actor: Actor, groupId: string): Promise<AccessibleGroup> {
+    const group = await this.findForMember(actor, groupId);
+    if (await this.repo.isActiveLeadTeacherOf(actor, groupId)) return group;
+    throw new NotFoundException();
+  }
+
+  /**
    * What a group shares with its families — the staff who may read the group,
    * or a guardian of a child in it now. Used for things addressed to the whole
    * group (the songs-and-poems library), never for one child's record.

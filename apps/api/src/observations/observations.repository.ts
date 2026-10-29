@@ -338,6 +338,95 @@ export class ObservationsRepository {
   }
 
   /**
+   * A group's teacher notes over a window, in full — «Сарын тэмдэглэл».
+   *
+   * Keyed on the enrolment the note was written under: the notes this group
+   * wrote, not the ones a child's next group writes.
+   *
+   * ★ D2 (the user, 2026-10-16): a teacher reaches a child only while the
+   * child is in the group now. A child who has left it shows only the notes
+   * this teacher wrote — `visibleChildrenWhere`'s teacher chain, and the
+   * author rule a former teacher keeps.
+   *
+   * Staff notes only (`source: TEACHER`); a family's submission belongs to the
+   * review queue, not to the teacher's record of the month.
+   */
+  async listGroupTeacherObservations(
+    viewerUserId: string,
+    groupId: string,
+    kindergartenId: string,
+    from: Date,
+    to: Date,
+    page: PageParams,
+  ) {
+    const { skip, take } = toSkipTake(page);
+    const where = {
+      kindergartenId,
+      deletedAt: null,
+      source: "TEACHER" as ObservationSource,
+      enrollment: { groupId, deletedAt: null },
+      observedOn: { gte: from, lte: to },
+      OR: [
+        {
+          child: {
+            enrollments: { some: { groupId, status: "ACTIVE" as const, deletedAt: null } },
+          },
+        },
+        { authorId: viewerUserId },
+      ],
+    };
+
+    const [items, total] = await Promise.all([
+      this.prisma.observation.findMany({
+        where,
+        orderBy: [
+          { child: { firstName: "asc" } },
+          { child: { lastName: "asc" } },
+          { childId: "asc" },
+          { observedOn: "asc" },
+          { observedTime: "asc" },
+          { id: "asc" },
+        ],
+        skip,
+        take,
+        select: {
+          id: true,
+          childId: true,
+          observedOn: true,
+          observedTime: true,
+          activityName: true,
+          situation: true,
+          childDid: true,
+          childSaid: true,
+          teacherComment: true,
+          nextSteps: true,
+          child: { select: { id: true, lastName: true, firstName: true } },
+          type: { select: { id: true, name: true, code: true } },
+          indicator: { select: { id: true, code: true, domainId: true } },
+          indicatorLevel: true,
+          author: { select: { id: true, lastName: true, firstName: true } },
+          domains: { select: { domain: { select: { id: true, name: true } } } },
+          // One photo, the first — the client, 2026-10-28: the print shows one.
+          media: {
+            where: { deletedAt: null, status: "READY" },
+            select: { id: true, caption: true },
+            orderBy: { order: "asc" },
+            take: 1,
+          },
+          a79Links: {
+            where: { deletedAt: null },
+            select: { level: true, number: true, status: true },
+            orderBy: [{ level: "asc" }, { number: "asc" }],
+          },
+        },
+      }),
+      this.prisma.observation.count({ where }),
+    ]);
+
+    return { items, total };
+  }
+
+  /**
    * The group, if this actor's kindergartens contain it.
    *
    * Scoped by `kindergartenId in […]` rather than fetched then checked: an id
