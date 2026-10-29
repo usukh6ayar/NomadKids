@@ -965,6 +965,33 @@ describe("group month of notes", () => {
 
     expect(res.status).toBe(400);
   });
+
+  // ★ D2 (the user, 2026-10-16): once the child has left, the lead teacher
+  // keeps only the notes they wrote — not a colleague's.
+  it("a child who has left shows only the lead teacher's own notes", async () => {
+    const own = await teacherObservation();
+    const colleagues = await teacherObservation({ childDid: "Бөмбөг шидэв" });
+    await db.observation.update({
+      where: { id: colleagues },
+      data: { authorId: a.adminUser.id },
+    });
+    const month = () =>
+      authed(
+        request(server()).get(`/v1/groups/${a.group.id}/observations?${FEBRUARY}`),
+        teacherA,
+      );
+    expect((await month()).body.total).toBe(2);
+
+    await db.enrollment.updateMany({
+      where: { childId: a.child.id, groupId: a.group.id },
+      data: { status: "TRANSFERRED", endedOn: new Date("2026-02-20T00:00:00.000Z") },
+    });
+
+    const res = await month();
+    expect(res.status).toBe(200);
+    expect(res.body.items.map((note: { id: string }) => note.id)).toEqual([own]);
+    expect(res.body.total).toBe(1);
+  });
 });
 
 /**

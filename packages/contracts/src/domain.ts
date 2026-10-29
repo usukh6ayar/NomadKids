@@ -1536,6 +1536,12 @@ export const surveySchema = z.object({
   groupId: uuidSchema.nullish(),
   /** The group's name, for the staff list. Absent when `groupId` is null. */
   group: namedRefSchema.nullish(),
+  /**
+   * ★ Set on an А/79 baseline made from «Гарааны үнэлгээ» (2026-10-27) — the
+   * level its children are assessed on. Such a survey is not listed under
+   * «Судалгаа». Null on every other survey.
+   */
+  a79Level: z.enum(["I", "II", "III", "IV"]).nullish(),
   questions: z.array(surveyQuestionSchema).default([]),
   /** Set only on the child-facing list — has this guardian already answered
    * for this child (or, for a KINDERGARTEN-scope survey, at all)? */
@@ -4018,7 +4024,30 @@ export const primaryDashboardSchema = z.object({
  * `GET /platform/stats` — system-wide totals, RFP §12.2's "Администраторын
  * хяналтын самбар": нийт цэцэрлэг/бүлэг/хүүхэд/багш/идэвхтэй эцэг эх.
  */
+/** `GET /platform/stats` → `people` — who is on the platform, as people (2026-10-27). */
+export const platformPeopleSchema = z.object({
+  kindergartens: z.object({ contracted: z.number(), solo: z.number() }),
+  /** Teachers of contracted kindergartens; a solo teacher is counted in `soloTeachers`. */
+  teachers: z.number(),
+  soloTeachers: z.number(),
+  directors: z.number(),
+  /** Accountants, cooks, PE/music teachers, doctors. */
+  otherStaff: z.number(),
+  /** Accepted their invitation (or have signed in). */
+  parentsJoined: z.number(),
+  /** Hold an invitation card nobody has used yet. */
+  parentsInvited: z.number(),
+  /** Active children with at least one joined parent who can see them. */
+  childrenWithParent: z.number(),
+  /** Anyone (not the operator) signed in within the last seven days. */
+  activeLast7Days: z.number(),
+  /** Invitations accepted within the last seven days. */
+  joinedLast7Days: z.number(),
+});
+export type PlatformPeople = z.infer<typeof platformPeopleSchema>;
+
 export const platformStatsSchema = z.object({
+  people: platformPeopleSchema.nullish(),
   kindergartens: z.number(),
   groups: z.number(),
   children: z.number(),

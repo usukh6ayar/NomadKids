@@ -123,6 +123,7 @@ export class ObservationsService {
   async listGroupObservations(actor: Actor, groupId: string, query: GroupObservationsQuery) {
     const group = await this.groupAccess.assertLeadsGroup(actor, groupId);
     const { items, total } = await this.repo.listGroupTeacherObservations(
+      actor.userId,
       groupId,
       group.kindergartenId,
       query.from,

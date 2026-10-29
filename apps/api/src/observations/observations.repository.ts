@@ -338,23 +338,21 @@ export class ObservationsRepository {
   }
 
   /**
-   * The group, if this actor's kindergartens contain it.
-   *
-   * Scoped by `kindergartenId in […]` rather than fetched then checked: an id
-   * from another tenant returns null here and becomes a 404 in the service,
-   * which is one place the tenant filter can be forgotten instead of two.
-   */
-  /**
    * A group's teacher notes over a window, in full — «Сарын тэмдэглэл».
    *
-   * ★ Keyed on the enrolment the note was written under, not the child's
-   * current group: a child who moved on in the middle of the month still has
-   * this group's notes from the first half of it.
+   * Keyed on the enrolment the note was written under: the notes this group
+   * wrote, not the ones a child's next group writes.
+   *
+   * ★ D2 (the user, 2026-10-16): a teacher reaches a child only while the
+   * child is in the group now. A child who has left it shows only the notes
+   * this teacher wrote — `visibleChildrenWhere`'s teacher chain, and the
+   * author rule a former teacher keeps.
    *
    * Staff notes only (`source: TEACHER`); a family's submission belongs to the
    * review queue, not to the teacher's record of the month.
    */
   async listGroupTeacherObservations(
+    viewerUserId: string,
     groupId: string,
     kindergartenId: string,
     from: Date,
@@ -366,8 +364,16 @@ export class ObservationsRepository {
       kindergartenId,
       deletedAt: null,
       source: "TEACHER" as ObservationSource,
-      enrollment: { groupId },
+      enrollment: { groupId, deletedAt: null },
       observedOn: { gte: from, lte: to },
+      OR: [
+        {
+          child: {
+            enrollments: { some: { groupId, status: "ACTIVE" as const, deletedAt: null } },
+          },
+        },
+        { authorId: viewerUserId },
+      ],
     };
 
     const [items, total] = await Promise.all([
@@ -420,6 +426,13 @@ export class ObservationsRepository {
     return { items, total };
   }
 
+  /**
+   * The group, if this actor's kindergartens contain it.
+   *
+   * Scoped by `kindergartenId in […]` rather than fetched then checked: an id
+   * from another tenant returns null here and becomes a 404 in the service,
+   * which is one place the tenant filter can be forgotten instead of two.
+   */
   async findGroupForStats(groupId: string, kindergartenIds: string[]) {
     return this.prisma.group.findFirst({
       where: { id: groupId, deletedAt: null, kindergartenId: { in: kindergartenIds } },
